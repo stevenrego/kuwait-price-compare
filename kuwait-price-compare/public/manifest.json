@@ -1,0 +1,8 @@
+{
+  "short_name": "Kuwait Price Compare",
+  "name": "Kuwait Price Compare - Best Deals",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#667eea",
+  "background_color": "#ffffff"
+}
