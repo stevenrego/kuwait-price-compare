@@ -1,89 +1,197 @@
-import React, { useState, useCallback } from 'react';
-import SearchBar from './components/SearchBar';
-import ProductGrid from './components/ProductGrid';
-import PriceAnalysis from './components/PriceAnalysis';
-import TrendingProducts from './components/TrendingProducts';
-import LoadingSpinner from './components/LoadingSpinner';
-import './App.css';
+import React, { useState } from "react";
 
-function App() {
-  const [products, setProducts] = useState([]);
-  const [analysis, setAnalysis] = useState(null);
+export default function App() {
+  const [term, setTerm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [results, setResults] = useState([]);   // always an array
+  const [sources, setSources] = useState([]);   // per-retailer evidence
 
-  const searchProducts = async (query) => {
-    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-    if (!response.ok) {
-      throw new Error('Failed to search products');
-    }
-    return await response.json();
-  };
-
-  const handleSearch = useCallback(async (query) => {
-    if (!query.trim()) return;
-    
-    setLoading(true);
-    setError('');
-    setSearchQuery(query);
+  async function doSearch(e) {
+    e?.preventDefault?.();
+    const q = term.trim();
+    if (!q) return;
 
     try {
-      const data = await searchProducts(query);
-      setProducts(data.products);
-      setAnalysis(data.analysis);
+      setLoading(true);
+      setError(null);
+      setResults([]);
+      setSources([]);
+
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+        headers: { Accept: "application/json" },
+      });
+
+      const ct = r.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        const text = await r.text();
+        throw new Error(
+          `Expected JSON, got ${ct || "unknown"}. Snippet: ${text.slice(0, 140)}…`
+        );
+      }
+      if (!r.ok) {
+        const body = await r.text();
+        throw new Error(`API ${r.status}: ${body}`);
+      }
+
+      const data = await r.json();
+
+      const list = Array.isArray(data?.results) ? data.results : [];
+      setResults(list);
+
+      const srcs = Array.isArray(data?.sources) ? data.sources : [];
+      setSources(srcs);
     } catch (err) {
-      setError(err.message || 'Failed to search products');
-      setProducts([]);
-      setAnalysis(null);
+      console.error(err);
+      setError(err?.message || "Search failed");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
   return (
-    <div className="App">
-      <header className="app-header">
-        <div className="container">
-          <div className="header-content">
-            <h1>🔍 Kuwait Price Compare</h1>
-            <p>Find the best deals across Kuwait's top retailers & international sites</p>
-            <SearchBar onSearch={handleSearch} loading={loading} />
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 24,
+        background:
+          "linear-gradient(135deg, rgba(111,134,214,1) 0%, rgba(119,75,200,1) 100%)",
+        color: "#fff",
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <h1 style={{ fontWeight: 800, marginBottom: 8 }}>Kuwait Price Compare</h1>
+        <p style={{ opacity: 0.85, marginTop: 0 }}>
+          Live comparison across Kuwait retailers (Xcite, Blink, Eureka). Type a product below.
+        </p>
+
+        <form onSubmit={doSearch} style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <input
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Search e.g. iPhone 13"
+            style={{
+              flex: 1,
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "none",
+              outline: "none",
+              color: "#1f2937",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "none",
+              background: "#10b981",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "Searching…" : "Search"}
+          </button>
+        </form>
+
+        {error && (
+          <div
+            style={{
+              marginTop: 16,
+              background: "#FEE2E2",
+              color: "#7F1D1D",
+              padding: 12,
+              borderRadius: 12,
+            }}
+          >
+            {error}
           </div>
-        </div>
-      </header>
+        )}
 
-      <main className="main-content">
-        <div className="container">
-          {error && (
-            <div className="error-message">
-              <span>❌ {error}</span>
-            </div>
-          )}
+        {!error && !loading && results.length === 0 && (
+          <div style={{ marginTop: 20, opacity: 0.85 }}>
+            No results yet. Try searching for something.
+          </div>
+        )}
 
-          {loading && <LoadingSpinner />}
+        {results.length > 0 && (
+          <div
+            style={{
+              marginTop: 20,
+              background: "rgba(255,255,255,0.95)",
+              borderRadius: 16,
+              padding: 12,
+              color: "#111827",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ textAlign: "left" }}>
+                  <th style={{ padding: 8 }}>Product</th>
+                  <th style={{ padding: 8 }}>Retailer</th>
+                  <th style={{ padding: 8 }}>Price (KWD)</th>
+                  <th style={{ padding: 8 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r, idx) => (
+                  <tr key={idx} style={{ borderTop: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: 8 }}>
+                      <div style={{ fontWeight: 600 }}>{r.title || "—"}</div>
+                    </td>
+                    <td style={{ padding: 8, textTransform: "capitalize" }}>
+                      {r.retailer || "—"}
+                    </td>
+                    <td style={{ padding: 8 }}>{r.priceNum ?? r.price ?? "—"}</td>
+                    <td style={{ padding: 8 }}>
+                      {r.url && (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            color: "#2563eb",
+                            fontWeight: 600,
+                            textDecoration: "none",
+                          }}
+                        >
+                          View →
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-          {!loading && !searchQuery && !error && (
-            <TrendingProducts onSearch={handleSearch} />
-          )}
-
-          {!loading && searchQuery && products.length === 0 && !error && (
-            <div className="no-results">
-              <h2>🔍 No products found for "{searchQuery}"</h2>
-              <p>Try different keywords or check the spelling</p>
-            </div>
-          )}
-
-          {!loading && products.length > 0 && (
-            <>
-              <PriceAnalysis analysis={analysis} query={searchQuery} />
-              <ProductGrid products={products} />
-            </>
-          )}
-        </div>
-      </main>
+        {sources.length > 0 && (
+          <div
+            style={{
+              marginTop: 14,
+              background: "rgba(255,255,255,0.2)",
+              borderRadius: 14,
+              padding: 10,
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Fetch evidence</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {sources.map((s, i) => (
+                <li key={i}>
+                  {s.retailer}: {s.ok ? `OK (${s.items?.length || 0} items)` : `ERR: ${s.error || "unknown"}`}
+                  {typeof s.tookMs === "number" ? ` • ${s.tookMs}ms` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-export default App;
