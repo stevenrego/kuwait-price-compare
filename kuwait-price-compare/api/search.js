@@ -1,93 +1,44 @@
-// Mock data generator for demo
-const generateMockData = (query) => {
-  const mockProducts = [
-    {
-      title: `${query} - Premium Model`,
-      price: Math.random() * 500 + 100,
-      image: 'https://via.placeholder.com/300x200?text=Product+Image',
-      link: `https://www.xcite.com/search?q=${encodeURIComponent(query)}`,
-      seller: 'X-cite',
-      logo: 'https://via.placeholder.com/50x30?text=Xcite'
-    },
-    {
-      title: `${query} - Standard Edition`,
-      price: Math.random() * 400 + 80,
-      image: 'https://via.placeholder.com/300x200?text=Product+Image',
-      link: `https://www.bestalkuwait.com/search?q=${encodeURIComponent(query)}`,
-      seller: 'Best Al Kuwait',
-      logo: 'https://via.placeholder.com/50x30?text=BAK'
-    },
-    {
-      title: `${query} - Budget Option`,
-      price: Math.random() * 300 + 50,
-      image: 'https://via.placeholder.com/300x200?text=Product+Image',
-      link: `https://amazon.com/s?k=${encodeURIComponent(query)}`,
-      seller: 'Amazon',
-      logo: 'https://via.placeholder.com/50x30?text=Amazon'
-    },
-    {
-      title: `${query} - Great Deal`,
-      price: Math.random() * 200 + 30,
-      image: 'https://via.placeholder.com/300x200?text=Product+Image', 
-      link: `https://temu.com/search_result.html?search_key=${encodeURIComponent(query)}`,
-      seller: 'Temu',
-      logo: 'https://via.placeholder.com/50x30?text=Temu'
-    }
-  ];
+// CommonJS on Vercel Node 20
+const { searchXcite } = require("../lib/adapters/xcite");
+const { searchBlink } = require("../lib/adapters/blink");
+const { searchEureka } = require("../lib/adapters/eureka");
+const { sanitizeQuery } = require("../lib/normalize");
 
-  return mockProducts.map((product, index) => ({
-    ...product,
-    id: `mock-${index}`,
-    currency: 'KWD',
-    availability: 'In Stock'
-  }));
-};
-
-export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+module.exports = async (req, res) => {
   try {
-    const { q: query } = req.query;
+    const q = sanitizeQuery(req.query.q || req.body?.q || "");
+    if (!q) return res.status(400).json({ error: "Missing query ?q=" });
 
-    if (!query) {
-      return res.status(400).json({ error: 'Query parameter is required' });
-    }
+    const started = Date.now();
+    const [xcite, blink, eureka] = await Promise.allSettled([
+      searchXcite(q, 5),
+      searchBlink(q, 5),
+      searchEureka(q, 5),
+    ]);
 
-    const products = generateMockData(query);
-    
-    // Sort by price
-    products.sort((a, b) => a.price - b.price);
+    const pack = (name, p) => ({
+      retailer: name,
+      ok: p.status === "fulfilled",
+      tookMs: p.status === "fulfilled" ? p.value._meta?.tookMs : undefined,
+      error: p.status === "rejected" ? (p.reason?.message || String(p.reason)) : undefined,
+      items: p.status === "fulfilled" ? p.value.items : [],
+    });
 
-    // Calculate analysis
-    const prices = products.map(p => p.price);
-    const analysis = {
-      count: products.length,
-      minPrice: Math.min(...prices),
-      maxPrice: Math.max(...prices),
-      avgPrice: prices.reduce((a, b) => a + b, 0) / prices.length,
-      savings: Math.max(...prices) - Math.min(...prices),
-      currency: 'KWD'
+    const payload = {
+      query: q,
+      currency: "KWD",
+      tookMs: Date.now() - started,
+      sources: [pack("xcite", xcite), pack("blink", blink), pack("eureka", eureka)],
     };
 
-    res.status(200).json({
-      query,
-      products,
-      analysis,
-      timestamp: new Date().toISOString()
-    });
+    // flatten + sort by price asc for convenience on the client
+    payload.results = payload.sources
+      .flatMap(s => s.items.map(x => ({ ...x, retailer: s.retailer })))
+      .sort((a, b) => (a.priceNum ?? Infinity) - (b.priceNum ?? Infinity));
 
-  } catch (error) {
-    console.error('Search API error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error.message
-    });
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json(payload);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "server_error" });
   }
-}
+};
