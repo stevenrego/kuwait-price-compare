@@ -245,9 +245,11 @@ module.exports = async (req, res) => {
       .flatMap((s) => s.items.map((x) => ({ ...x, retailer: s.retailer })))
       .sort((a, b) => (a.priceNum ?? Infinity) - (b.priceNum ?? Infinity));
 
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json(payload);
   } catch (err) {
     return res.status(500).json({ error: err.message || "server_error" });
   }
 };
+
