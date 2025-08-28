@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 
 export default function App() {
+  const [mode, setMode] = useState("products"); // "products" | "food"
+  const [term, setTerm] = useState("");
+  const [city, setCity] = useState("Kuwait");   // optional for food
+  // ... keep your other state (loading, error, results, sources) ...
+
+
+export default function App() {
   const [term, setTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -50,6 +57,39 @@ export default function App() {
   }
 
   return (
+<div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+  <label>
+    <input
+      type="radio"
+      name="mode"
+      value="products"
+      checked={mode === "products"}
+      onChange={() => setMode("products")}
+    />{" "}
+    Products
+  </label>
+  <label>
+    <input
+      type="radio"
+      name="mode"
+      value="food"
+      checked={mode === "food"}
+      onChange={() => setMode("food")}
+    />{" "}
+    Food (delivery)
+  </label>
+
+  {mode === "food" && (
+    <input
+      value={city}
+      onChange={(e) => setCity(e.target.value)}
+      placeholder="City (e.g., Kuwait)"
+      style={{ marginLeft: 12, padding: "8px 10px", borderRadius: 8, border: "none" }}
+    />
+  )}
+</div>
+
+    
     <div
       style={{
         minHeight: "100vh",
@@ -195,3 +235,4 @@ export default function App() {
     </div>
   );
 }
+
